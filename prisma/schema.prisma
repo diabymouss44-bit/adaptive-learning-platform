@@ -1,0 +1,447 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============= Utilisateur =============
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  name               String?
+  password           String    @db.VarChar(255)
+  profile            String?   @db.Text
+  level              Int       @default(0)
+  totalXP            Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+
+  // Relations
+  enrollments        Enrollment[]
+  courseProgress     CourseProgress[]
+  answers            Answer[]
+  achievements       Achievement[]
+  sessions           LearningSession[]
+  notifications      Notification[]
+  adaptiveMetrics    AdaptiveMetrics[]
+
+  @@index([email])
+  @@map("users")
+}
+
+// ============= Cours & Contenu =============
+model Course {
+  id                 String    @id @default(cuid())
+  title              String
+  description        String    @db.Text
+  category           String
+  difficulty         Difficulty @default(BEGINNER)
+  estimatedDuration  Int       // en minutes
+  icon               String?
+  bannerUrl          String?
+  targetAudience     String?
+  prerequisites      String?   @db.Text
+  learningOutcomes   String?   @db.Text
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  isPublished        Boolean   @default(false)
+
+  // Relations
+  modules            Module[]
+  enrollments        Enrollment[]
+  courseProgress     CourseProgress[]
+
+  @@index([difficulty])
+  @@index([category])
+  @@map("courses")
+}
+
+model Module {
+  id                 String    @id @default(cuid())
+  courseId           String
+  title              String
+  description        String    @db.Text
+  order              Int
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  course             Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  sections           Section[]
+
+  @@index([courseId])
+  @@map("modules")
+}
+
+model Section {
+  id                 String    @id @default(cuid())
+  moduleId           String
+  title              String
+  content            String    @db.Text
+  type               SectionType
+  order              Int
+  mediaUrl           String?
+  estimatedTime      Int?      // en minutes
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  module             Module    @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  exercises          Exercise[]
+  quizzes            Quiz[]
+
+  @@index([moduleId])
+  @@map("sections")
+}
+
+// ============= Exercices =============
+model Exercise {
+  id                 String    @id @default(cuid())
+  sectionId          String
+  title              String
+  description        String    @db.Text
+  difficulty         Difficulty
+  type               ExerciseType
+  content            String    @db.Text
+  solutionCode       String?   @db.Text
+  testCases          String?   @db.Text
+  hints              String[]
+  order              Int
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  section            Section   @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  answers            Answer[]
+  submissions        Submission[]
+
+  @@index([sectionId])
+  @@index([difficulty])
+  @@map("exercises")
+}
+
+model Answer {
+  id                 String    @id @default(cuid())
+  userId             String
+  exerciseId         String
+  content            String    @db.Text
+  isCorrect          Boolean
+  score              Int       @default(0)
+  feedback           String?   @db.Text
+  attemptNumber      Int
+  submittedAt        DateTime  @default(now())
+
+  // Relations
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise           Exercise  @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exerciseId, attemptNumber])
+  @@index([userId])
+  @@index([exerciseId])
+  @@map("answers")
+}
+
+model Submission {
+  id                 String    @id @default(cuid())
+  exerciseId         String
+  userId             String?
+  code               String    @db.Text
+  language           String
+  status             SubmissionStatus @default(PENDING)
+  executionTime      Int?
+  memory             Int?
+  output             String?   @db.Text
+  error              String?   @db.Text
+  submittedAt        DateTime  @default(now())
+
+  // Relations
+  exercise           Exercise  @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@index([exerciseId])
+  @@index([status])
+  @@map("submissions")
+}
+
+// ============= Quiz =============
+model Quiz {
+  id                 String    @id @default(cuid())
+  sectionId          String
+  title              String
+  description        String?   @db.Text
+  difficulty         Difficulty
+  passingScore       Int       @default(70)
+  order              Int
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  section            Section   @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  questions          Question[]
+  attempts           QuizAttempt[]
+
+  @@index([sectionId])
+  @@map("quizzes")
+}
+
+model Question {
+  id                 String    @id @default(cuid())
+  quizId             String
+  text               String    @db.Text
+  type               QuestionType
+  options            String[]
+  correctAnswer      String
+  explanation        String?   @db.Text
+  order              Int
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  quiz               Quiz      @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  responses          QuizResponse[]
+
+  @@index([quizId])
+  @@map("questions")
+}
+
+model QuizAttempt {
+  id                 String    @id @default(cuid())
+  quizId             String
+  userId             String
+  score              Int
+  passed             Boolean
+  timeSpent          Int       // en secondes
+  startedAt          DateTime
+  completedAt        DateTime
+  responses          QuizResponse[]
+
+  // Relations
+  quiz               Quiz      @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([quizId])
+  @@index([userId])
+  @@map("quiz_attempts")
+}
+
+model QuizResponse {
+  id                 String    @id @default(cuid())
+  attemptId          String
+  questionId         String
+  answer             String
+  isCorrect          Boolean
+
+  // Relations
+  attempt            QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question           Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId])
+  @@index([questionId])
+  @@map("quiz_responses")
+}
+
+// ============= Inscriptions & Progression =============
+model Enrollment {
+  id                 String    @id @default(cuid())
+  userId             String
+  courseId           String
+  enrolledAt         DateTime  @default(now())
+  completedAt        DateTime?
+  status             EnrollmentStatus @default(IN_PROGRESS)
+
+  // Relations
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course             Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([userId])
+  @@index([courseId])
+  @@map("enrollments")
+}
+
+model CourseProgress {
+  id                 String    @id @default(cuid())
+  userId             String
+  courseId           String
+  completedSections  Int       @default(0)
+  totalSections      Int
+  completedModules   Int       @default(0)
+  totalModules       Int
+  progressPercentage Float     @default(0)
+  currentDifficulty  Difficulty @default(BEGINNER)
+  lastAccessedAt     DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course             Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([userId])
+  @@map("course_progress")
+}
+
+// ============= Apprentissage Adaptatif =============
+model AdaptiveMetrics {
+  id                 String    @id @default(cuid())
+  userId             String
+  totalAttempts      Int       @default(0)
+  correctAnswers     Int       @default(0)
+  incorrectAnswers   Int       @default(0)
+  averageScore       Float     @default(0)
+  learningPace       String    @default("NORMAL")
+  strongTopics       String[]  @default([])
+  weakTopics         String[]  @default([])
+  recommendedLevel   Difficulty
+  lastCalculatedAt   DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@map("adaptive_metrics")
+}
+
+model LearningPath {
+  id                 String    @id @default(cuid())
+  userId             String?
+  courseId           String?
+  sequenceOrder      String[]
+  adaptationRules    String    @db.Text
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  sessions           LearningSession[]
+
+  @@index([userId])
+  @@index([courseId])
+  @@map("learning_paths")
+}
+
+model LearningSession {
+  id                 String    @id @default(cuid())
+  userId             String
+  pathId             String
+  startedAt          DateTime  @default(now())
+  endedAt            DateTime?
+  duration           Int?      // en secondes
+  contentViewed      String[]  @default([])
+  exercisesCompleted String[]  @default([])
+  score              Int?
+  status             SessionStatus @default(ACTIVE)
+
+  // Relations
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  path               LearningPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([pathId])
+  @@map("learning_sessions")
+}
+
+// ============= Gamification =============
+model Achievement {
+  id                 String    @id @default(cuid())
+  userId             String
+  title              String
+  description        String    @db.Text
+  icon               String?
+  badge              String?
+  xpReward           Int
+  unlockedAt         DateTime  @default(now())
+
+  // Relations
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("achievements")
+}
+
+model Notification {
+  id                 String    @id @default(cuid())
+  userId             String
+  type               NotificationType
+  title              String
+  message            String    @db.Text
+  data               String?   @db.Text
+  read               Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+
+  // Relations
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@map("notifications")
+}
+
+// ============= Énumérations =============
+enum Difficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum SectionType {
+  THEORY
+  VIDEO
+  INTERACTIVE
+  SIMULATION
+  CASE_STUDY
+}
+
+enum ExerciseType {
+  MULTIPLE_CHOICE
+  CODE
+  ESSAY
+  MATCHING
+  DRAG_DROP
+  SIMULATION
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+  ESSAY
+}
+
+enum EnrollmentStatus {
+  IN_PROGRESS
+  COMPLETED
+  PAUSED
+  ABANDONED
+}
+
+enum SubmissionStatus {
+  PENDING
+  RUNNING
+  ACCEPTED
+  WRONG_ANSWER
+  TIME_LIMIT_EXCEEDED
+  RUNTIME_ERROR
+  COMPILATION_ERROR
+}
+
+enum SessionStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ABANDONED
+}
+
+enum NotificationType {
+  ACHIEVEMENT
+  RECOMMENDATION
+  REMINDER
+  PROGRESS
+  ALERT
+}
